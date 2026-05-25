@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'login_screen.dart';
 import '../api.dart';
 import 'deposit_screen.dart';
@@ -34,82 +33,100 @@ class _OrdersScreenState extends State<OrdersScreen> {
   bool isOrderVisible = false;
   bool isDialogOpen = false;
   Set<int> seenOrders = {};
-  bool isProcessing = false;
-  bool isToggling = false;
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool isProcessing = false; // ✅ منع الضغط المتكرر
 
-  // حالة الـ bottom sheet
-  Timer? _sheetTimer;
-  int _sheetSeconds = 10;
-  bool _isChecked = false;
-  bool _isClaiming = false;
-  bool _claimDone = false;
+  Timer? _dialogTimer;
+  int _dialogSeconds = 10;
 
   @override
   void initState() {
     super.initState();
+    print("🟢 initState: بدء تهيئة OrdersScreen");
     init();
   }
 
   @override
   void dispose() {
+    print("🔴 dispose: تنظيف OrdersScreen");
     pollTimer?.cancel();
-    _sheetTimer?.cancel();
-    _audioPlayer.dispose();
+    _dialogTimer?.cancel();
     super.dispose();
   }
 
-  String format(num n) => formatter.format(n);
+  String format(num n) {
+    String result = formatter.format(n);
+    print("📊 format: $n -> $result");
+    return result;
+  }
 
   Future<void> logout(BuildContext context) async {
+    print("🚪 logout: بدء تسجيل الخروج");
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('api_token');
+    print("✅ تم حذف api_token من SharedPreferences");
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );
+    print("📱 تم التوجيه إلى شاشة LoginScreen");
   }
 
   Future<void> init() async {
+    print("🟡 init: بدء عملية التهيئة");
     final prefs = await SharedPreferences.getInstance();
     token = prefs.getString('api_token');
+    print("🔑 التوكن المسترجع: $token");
 
     if (token == null) {
+      print("❌ لا يوجد توكن -> تعيين رسالة خطأ");
       if (!mounted) return;
       setState(() {
         errorMessage = "جلسة غير صالحة";
         isLoading = false;
       });
+      print("⚠️ errorMessage = جلسة غير صالحة, isLoading = false");
       return;
     }
 
+    print("✅ التوكن موجود، جلب لوحة المعلومات...");
     await fetchDashboard();
+    print("🔄 بدء الـ polling بعد جلب البيانات");
     startPolling();
   }
 
   Future<void> fetchDashboard() async {
+    print("🟡 fetchDashboard: بدء طلب لوحة المعلومات");
     try {
       final url = Api.dashboard();
+      print("🔗 URL: $url");
       final res = await http.get(
         Uri.parse(url),
         headers: {'Authorization': 'Bearer $token'},
       );
       if (!mounted) return;
+      print("📡 Response status: ${res.statusCode}");
       final data = jsonDecode(res.body);
+      print("📄 Response body: ${res.body}");
 
       if (data['success'] == true) {
+        print("✅ تم جلب البيانات بنجاح");
+        if (!mounted) return;
         setState(() {
           dashboard = data;
           isLoading = false;
         });
+        print("📦 dashboard تم تخزينه: $dashboard");
       } else {
+        print("❌ فشل جلب البيانات: ${data['message']}");
+        if (!mounted) return;
         setState(() {
           errorMessage = data['message'];
           isLoading = false;
         });
       }
     } catch (e) {
+      print("🔥 خطأ اتصال: $e");
       if (!mounted) return;
       setState(() {
         errorMessage = "خطأ اتصال";
@@ -119,431 +136,308 @@ class _OrdersScreenState extends State<OrdersScreen> {
   }
 
   void startPolling() {
+    print("🟡 startPolling: إعداد الـ polling");
     pollTimer?.cancel();
-    final limit = _toDouble(dashboard?['limit']);
-    final isAvailable = dashboard?['is_available'] == true;
+    print("⏹️ تم إلغاء أي مؤقت سابق");
 
-    if (limit > 0 && isAvailable) {
+    final limit = _toDouble(dashboard?['limit']);
+
+    print("💰 limit = $limit");
+
+    if (limit > 0) {
+      print("✅ الشروط متاحة: سيبدأ الـ polling كل 5 ثوانٍ");
       pollTimer = Timer.periodic(
         const Duration(seconds: 5),
         (_) => checkOrder(),
       );
+    } else {
+      print("⛔ الشروط غير متاحة: لن يتم بدء الـ polling");
     }
   }
 
   Future<void> checkOrder() async {
-    if (token == null || isOrderVisible || isDialogOpen) return;
+    if (token == null || isOrderVisible || isDialogOpen) {
+      print(
+          "⚠️ checkOrder: token = $token, isOrderVisible = $isOrderVisible, isDialogOpen = $isDialogOpen -> تخطي");
+      return;
+    }
 
     try {
       final url = Api.checkOrder();
+      print("🔍 checkOrder: جلب الطلب من $url");
       final res = await http.get(
         Uri.parse(url),
         headers: {'Authorization': 'Bearer $token'},
       );
       if (!mounted) return;
+      print("📡 Response status: ${res.statusCode}");
       final data = jsonDecode(res.body);
+      print("📄 Response body: ${res.body}");
 
       if (data['success'] == true && data['found'] == true) {
         final newId = data['id'];
-        if (seenOrders.contains(newId)) return;
+        print("✅ تم العثور على طلب جديد بالـ id = $newId");
+
+        if (seenOrders.contains(newId)) {
+          print("⚠️ نفس الطلب السابق -> تجاهل");
+          return;
+        }
 
         isOrderVisible = true;
+
         seenOrders.add(newId);
         currentOrder = data;
+
+        print("🛑 إلغاء الـ polling لحين معالجة الطلب");
         pollTimer?.cancel();
 
-        await _audioPlayer.play(AssetSource('sounds/notification.mp3'));
-
-        if (!isDialogOpen) showOrderDialog(data);
+        if (isDialogOpen) return;
+        print("📢 عرض حوار الطلب");
+        showOrderDialog(data);
+      } else {
+        print("ℹ️ لا يوجد طلب حالي (found=false أو success=false)");
       }
     } catch (e) {
-      print("🔥 checkOrder error: $e");
+      print("🔥 خطأ في جلب الطلب: $e");
     }
   }
 
   Future<void> claimOrder(int orderId, String type) async {
+    print("🟡 claimOrder: بدء طلب المطالبة للطلب $orderId من نوع $type");
     final url = Api.post("agent/claim-order.php");
+    print("🔗 URL: $url");
     final res = await http.post(
       Uri.parse(url),
       headers: {'Authorization': 'Bearer $token'},
-      body: {'order_id': orderId.toString(), 'type': type},
+      body: {
+        'order_id': orderId.toString(),
+        'type': type,
+      },
     );
     if (!mounted) return;
+    print("📡 Response status: ${res.statusCode}");
     final data = jsonDecode(res.body);
+    print("📄 Response body: ${res.body}");
+    print("CLAIM RESPONSE: $data");
+
     if (data['success'] != true) {
       throw Exception(data['message'] ?? "فشل في المطالبة بالطلب");
     }
-  }
-
-  void _startSheetTimer(VoidCallback onTimeout) {
-    _sheetTimer?.cancel();
-    _sheetSeconds = 10;
-    _sheetTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted || !isDialogOpen) {
-        t.cancel();
-        return;
-      }
-      if (_sheetSeconds > 0) {
-        setState(() => _sheetSeconds--);
-      } else {
-        t.cancel();
-        onTimeout();
-      }
-    });
-  }
-
-  void _closeSheet() {
-    _sheetTimer?.cancel();
-    if (isDialogOpen && mounted) {
-      Navigator.pop(context);
-    }
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(fontSize: 16, color: Colors.black54)),
-          Text(value,
-              style:
-                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
+    print("✅ تمت المطالبة بنجاح");
   }
 
   void showOrderDialog(Map<String, dynamic> order) {
-    if (isDialogOpen) return;
+    if (isDialogOpen || Navigator.canPop(context)) return;
     isDialogOpen = true;
+    _dialogSeconds = 10;
+    print("📱 showOrderDialog: عرض الـ bottomSheet للطلب");
+    print(
+        "📋 نوع الطلب: ${order['type']}, المبلغ: ${order['amount']}, الطريقة: ${order['method']}");
 
-    _isChecked = false;
-    _isClaiming = false;
-    _claimDone = false;
-
-    _startSheetTimer(_closeSheet);
+    _dialogTimer?.cancel();
+    _dialogTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted || !isDialogOpen) {
+        timer.cancel();
+        return;
+      }
+      if (_dialogSeconds > 0) {
+        setState(() {
+          _dialogSeconds--;
+        });
+      } else {
+        timer.cancel();
+        if (isDialogOpen) {
+          Navigator.pop(context);
+        }
+      }
+    });
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
       builder: (_) {
-        return StatefulBuilder(
-          builder: (ctx, setSheet) {
-            return FractionallySizedBox(
-              heightFactor: 0.95,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    Center(
-                      child: Text(
-                        order['type'] == 'withdrawal' ? "طلب سحب" : "طلب إيداع",
-                        style: const TextStyle(
-                            fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _detailRow("المبلغ", "${order['amount']} IQD"),
-                    _detailRow("الطريقة", "${order['method']}"),
-                    if (order['client_name'] != null)
-                      _detailRow("العميل", "${order['client_name']}"),
-                    const Spacer(),
-                    if (!_claimDone) ...[
-                      Center(
-                        child: Text(
-                          _isChecked
-                              ? "المتابعة خلال $_sheetSeconds ثانية"
-                              : "ينتهي العرض خلال $_sheetSeconds ثانية",
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _isChecked
-                                ? Colors.teal.shade700
-                                : Colors.redAccent,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      LinearProgressIndicator(
-                        value: _sheetSeconds / 10,
-                        backgroundColor: Colors.grey.shade200,
-                        color: _isChecked ? Colors.teal : Colors.redAccent,
-                        minHeight: 6,
-                      ),
-                    ],
-                    if (_claimDone)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10, horizontal: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.teal.shade50,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.teal),
-                        ),
-                        child: const Row(
-                          children: [
-                            Icon(Icons.lock_outline,
-                                color: Colors.teal, size: 20),
-                            SizedBox(width: 8),
-                            Text(
-                              "تم حجز الطلب — جاهز للمتابعة",
-                              style: TextStyle(
-                                  color: Colors.teal,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
-                      ),
-                    const SizedBox(height: 20),
-                    GestureDetector(
-                      onTap: (_isChecked || _isClaiming || _claimDone)
-                          ? null
-                          : () async {
-                              _sheetTimer?.cancel();
-                              setSheet(() => _isClaiming = true);
-                              // ✅ التعديل المطلوب
-                              if (mounted) setState(() => _isClaiming = true);
-                              final orderId = order['id'] as int;
-                              final orderType = order['type'] as String;
-                              try {
-                                await claimOrder(orderId, orderType);
-                                setSheet(() {
-                                  _isChecked = true;
-                                  _isClaiming = false;
-                                  _claimDone = true;
-                                });
-                                setState(() {
-                                  _isChecked = true;
-                                  _isClaiming = false;
-                                  _claimDone = true;
-                                });
-                                _startSheetTimer(_closeSheet);
-                              } catch (e) {
-                                setSheet(() => _isClaiming = false);
-                                setState(() => _isClaiming = false);
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text("فشل الحجز: $e")),
-                                  );
-                                }
-                                _startSheetTimer(_closeSheet);
-                              }
-                            },
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _isChecked
-                              ? Colors.teal.shade50
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color:
-                                _isChecked ? Colors.teal : Colors.grey.shade400,
-                            width: 1.5,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            _isClaiming
-                                ? const SizedBox(
-                                    width: 26,
-                                    height: 26,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2.5, color: Colors.teal),
-                                  )
-                                : AnimatedContainer(
-                                    duration: const Duration(milliseconds: 250),
-                                    width: 26,
-                                    height: 26,
-                                    decoration: BoxDecoration(
-                                      color: _isChecked
-                                          ? Colors.teal
-                                          : Colors.white,
-                                      borderRadius: BorderRadius.circular(7),
-                                      border: Border.all(
-                                        color: _isChecked
-                                            ? Colors.teal
-                                            : Colors.grey.shade400,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    child: _isChecked
-                                        ? const Icon(Icons.check_rounded,
-                                            color: Colors.white, size: 18)
-                                        : null,
-                                  ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _isClaiming
-                                    ? "جاري حجز الطلب..."
-                                    : _isChecked
-                                        ? "تم تأكيد الاستعداد"
-                                        : "ضع علامة صح للاستعداد",
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  color:
-                                      _isChecked ? Colors.teal : Colors.black87,
-                                  fontWeight: _isChecked
-                                      ? FontWeight.w600
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    GestureDetector(
-                      onTap: (_claimDone && !isProcessing)
-                          ? () async {
-                              _sheetTimer?.cancel();
-                              if (currentOrder == null) return;
-                              if (mounted) setState(() => isProcessing = true);
-                              final orderData =
-                                  Map<String, dynamic>.from(currentOrder!);
-                              final orderType = orderData['type'] as String;
-                              if (mounted) Navigator.pop(context);
-                              isOrderVisible = false;
-                              currentOrder = null;
-                              isDialogOpen = false;
-                              await Future.delayed(
-                                  const Duration(milliseconds: 300));
-                              if (!mounted) return;
-                              if (orderType == 'deposit') {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        DepositScreen(order: orderData),
-                                  ),
-                                );
-                              } else {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        WithdrawalScreen(order: orderData),
-                                  ),
-                                );
-                              }
-                              if (mounted) setState(() => isProcessing = false);
-                            }
-                          : null,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 350),
-                        width: double.infinity,
-                        height: 62,
-                        child: Stack(
-                          children: [
-                            Positioned.fill(
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: _claimDone
-                                      ? const Color(0xFF085041)
-                                      : Colors.grey.shade400,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              height: 56,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 350),
-                                decoration: BoxDecoration(
-                                  color: _claimDone
-                                      ? Colors.teal
-                                      : Colors.grey.shade300,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                alignment: Alignment.center,
-                                child: isProcessing
-                                    ? const SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2.5),
-                                      )
-                                    : Text(
-                                        "متابعة",
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w600,
-                                          color: _claimDone
-                                              ? Colors.white
-                                              : Colors.grey.shade500,
-                                        ),
-                                      ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+        print("🎨 بناء محتوى الـ bottomSheet");
+        return FractionallySizedBox(
+          heightFactor: 0.95,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+
+                // 🔹 عنوان
+                Text(
+                  order['type'] == 'withdrawal' ? "طلب سحب" : "طلب إيداع",
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            );
-          },
+
+                const SizedBox(height: 20),
+
+                // 🔹 تفاصيل
+                Text("المبلغ: ${order['amount']} IQD",
+                    style: const TextStyle(fontSize: 18)),
+                Text("الطريقة: ${order['method']}",
+                    style: const TextStyle(fontSize: 18)),
+
+                const Spacer(),
+
+                // 🔹 مؤقت القبول
+                Text(
+                  "ينتهي العرض خلال $_dialogSeconds ثانية",
+                  style: const TextStyle(fontSize: 16, color: Colors.red),
+                ),
+                const SizedBox(height: 12),
+                LinearProgressIndicator(
+                  value: _dialogSeconds / 10,
+                  backgroundColor: Colors.grey.shade300,
+                  color: Colors.teal,
+                  minHeight: 6,
+                ),
+
+                const SizedBox(height: 16),
+
+                // ✅ زر الضغط المطول (GestureDetector)
+                GestureDetector(
+                  onLongPress: isProcessing
+                      ? null
+                      : () async {
+                          _dialogTimer?.cancel();
+                          isProcessing = true;
+
+                          if (currentOrder == null) {
+                            isProcessing = false;
+                            return;
+                          }
+
+                          final orderData =
+                              Map<String, dynamic>.from(currentOrder!);
+                          final orderId = orderData['id'] as int;
+                          final orderType = orderData['type'] as String;
+
+                          try {
+                            await claimOrder(orderId, orderType);
+
+                            final rootContext =
+                                Navigator.of(context, rootNavigator: true)
+                                    .context;
+
+                            Navigator.pop(context);
+
+                            isOrderVisible = false;
+                            currentOrder = null;
+
+                            if (orderType == 'deposit') {
+                              await Navigator.of(rootContext).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      DepositScreen(order: orderData),
+                                ),
+                              );
+                            } else {
+                              await Navigator.of(rootContext).push(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      WithdrawalScreen(order: orderData),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (!mounted) return;
+
+                            Navigator.pop(context);
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text("فشل: $e")),
+                            );
+
+                            isOrderVisible = false;
+                            currentOrder = null;
+                            startPolling();
+                          } finally {
+                            isProcessing = false;
+                          }
+                        },
+                  child: Opacity(
+                    opacity: isProcessing ? 0.5 : 1,
+                    child: Container(
+                      width: double.infinity,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: Colors.teal,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Text(
+                        "اضغط مطولاً للقبول",
+                        style: TextStyle(fontSize: 20, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     ).whenComplete(() {
-      _sheetTimer?.cancel();
+      print("🔚 bottomSheet مغلق بالكامل (whenComplete)");
+      _dialogTimer?.cancel();
       isOrderVisible = false;
       isDialogOpen = false;
-      _isChecked = false;
-      _isClaiming = false;
-      _claimDone = false;
-      final limit = _toDouble(dashboard?['limit']);
-      if (limit > 0 && dashboard?['is_available'] == true) {
-        startPolling();
-      }
     });
   }
 
   Future<void> toggleAvailable() async {
+    print("🔄 toggleAvailable: تغيير حالة التوفر");
     final url = Api.radar();
+    print("🔗 URL: $url");
     final res = await http.post(
       Uri.parse(url),
       headers: {'Authorization': 'Bearer $token'},
       body: {'toggle_available': '1'},
     );
-    print("📡 toggleAvailable: ${res.statusCode}");
+    print("📡 Response status: ${res.statusCode}");
+    final body = res.body;
+    print("📄 Response body: $body");
+
+    print("🔄 إعادة جلب لوحة المعلومات بعد التبديل");
     await fetchDashboard();
   }
 
   void openRaiseLimit() {
+    print("📈 openRaiseLimit: فتح شاشة رفع الحد");
     Navigator.push(
-        context, MaterialPageRoute(builder: (_) => const RaiseLimitScreen()));
+      context,
+      MaterialPageRoute(builder: (_) => const RaiseLimitScreen()),
+    );
   }
 
   double _toDouble(dynamic v) {
-    if (v is num) return v.toDouble();
-    if (v is String) return double.tryParse(v) ?? 0;
-    return 0;
+    double result;
+    if (v is num)
+      result = v.toDouble();
+    else if (v is String)
+      result = double.tryParse(v) ?? 0;
+    else
+      result = 0;
+    print("🔢 _toDouble: $v -> $result");
+    return result;
   }
 
   @override
   Widget build(BuildContext context) {
+    print(
+        "🎨 build: إعادة بناء الواجهة (isLoading=$isLoading, errorMessage='$errorMessage')");
     if (isLoading) {
+      print("⏳ عرض مؤشر التحميل");
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (errorMessage.isNotEmpty) {
+      print("⚠️ عرض رسالة خطأ: $errorMessage");
       return Scaffold(body: Center(child: Text(errorMessage)));
     }
 
@@ -552,7 +446,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
     final limit = _toDouble(dashboard?['limit']);
     final remaining = _toDouble(dashboard?['remaining']);
     final currency = dashboard?['currency'] ?? 'IQD';
-    final isAvailable = dashboard?['is_available'] == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -575,7 +468,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 45),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: const Text("مركز التحكم"),
               ),
@@ -583,12 +477,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      Text("الحساب الجاري: ${format(balance)} $currency"),
+                      Text("الرصيد: ${format(balance)} $currency"),
                       Text("الأرباح: ${format(profit)} $currency"),
                       Text("السقف: ${format(limit)} $currency"),
                       Text("المتبقي: ${format(remaining)} $currency"),
@@ -596,129 +491,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 40),
-              Text(
-                isAvailable
-                    ? "🟢 أنت الآن متصل — سيتم إرسال الطلبات إليك"
-                    : "⏸️ أنت غير متاح حالياً — لن تصلك أي طلبات",
-                style: TextStyle(
-                  fontSize: 13,
-                  color:
-                      isAvailable ? Colors.teal.shade700 : Colors.grey.shade600,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: isToggling
-                    ? null
-                    : () async {
-                        final isAvailableNow =
-                            dashboard?['is_available'] == true;
-                        if (isAvailableNow) {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
-                              title: const Text(
-                                "إيقاف استلام الطلبات",
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                                textAlign: TextAlign.center,
-                              ),
-                              content: const Text(
-                                "هل أنت متأكد من إيقاف استلام الطلبات؟\nلن تصلك أي طلبات جديدة.",
-                                textAlign: TextAlign.center,
-                              ),
-                              actionsAlignment: MainAxisAlignment.center,
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx, false),
-                                  child: const Text("لا",
-                                      style: TextStyle(color: Colors.grey)),
-                                ),
-                                ElevatedButton(
-                                  onPressed: () => Navigator.pop(ctx, true),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.red,
-                                    foregroundColor: Colors.white,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(10)),
-                                  ),
-                                  child: const Text("إيقاف"),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm != true) return;
-                          if (!mounted) return;
-                        }
-                        setState(() => isToggling = true);
-                        try {
-                          await toggleAvailable();
-                          startPolling();
-                          if (dashboard?['is_available'] != true) {
-                            pollTimer?.cancel();
-                          }
-                        } finally {
-                          if (mounted) setState(() => isToggling = false);
-                        }
-                      },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: 160,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: isToggling
-                        ? Colors.grey.shade400
-                        : isAvailable
-                            ? const Color(0xFF1A56DB)
-                            : Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(50),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isAvailable) ...[
-                        const Text("مفتوح",
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 10),
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: const BoxDecoration(
-                              color: Colors.white24, shape: BoxShape.circle),
-                          child: const Icon(Icons.power_settings_new,
-                              color: Colors.white, size: 22),
-                        ),
-                      ] else ...[
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                              color: Colors.grey.shade400,
-                              shape: BoxShape.circle),
-                          child: Icon(Icons.power_settings_new,
-                              color: Colors.grey.shade600, size: 22),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          isToggling ? "..." : "مغلق",
-                          style: TextStyle(
-                              color: Colors.grey.shade700,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
             ],
           ),
         ),
