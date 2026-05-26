@@ -47,6 +47,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
           methods = inner['methods'] ?? [];
           myMethods = inner['my_methods'] ?? [];
           isLoading = false;
+          selectedMethodId = null; // إعادة تعيين القيمة المختارة
         });
       } else {
         setState(() {
@@ -87,6 +88,8 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       final data = jsonDecode(res.body);
       if (data['success'] == true) {
         accountController.clear();
+        setState(
+            () => selectedMethodId = null); // إعادة تعيين قبل إعادة التحميل
         fetchData();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تمت الإضافة بنجاح')),
@@ -183,7 +186,6 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
     }
   }
 
-  // ✅ الانتقال للخطوة التالية (تم التعديل هنا فقط)
   void goNext() {
     if (myMethods.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -191,8 +193,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       );
       return;
     }
-
-    Navigator.pop(context); // 👈 يرجع للـ GateScreen
+    Navigator.pop(context); // يرجع للـ GateScreen
   }
 
   void _showNewMethodDialog() {
@@ -262,6 +263,32 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
       );
     }
 
+    // فلترة الوسائل المتاحة (غير المضافة)
+    final addedMethodIds = myMethods.map((m) {
+      final id = m['payment_method_id'] is int
+          ? m['payment_method_id'] as int
+          : int.tryParse(m['payment_method_id'].toString()) ?? 0;
+      return id;
+    }).toSet();
+
+    final availableMethods = methods.where((m) {
+      final id = m['id'] is int
+          ? m['id'] as int
+          : int.tryParse(m['id'].toString()) ?? 0;
+      return !addedMethodIds.contains(id);
+    }).toList();
+
+    // إذا كان selectedMethodId لا يزال في القائمة المتاحة، احتفظ به، وإلا صفره
+    if (selectedMethodId != null &&
+        availableMethods.every((m) {
+          final id = m['id'] is int
+              ? m['id'] as int
+              : int.tryParse(m['id'].toString()) ?? 0;
+          return id != selectedMethodId;
+        })) {
+      selectedMethodId = null;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('وسائل الدفع'),
@@ -275,89 +302,126 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // =========================
-            // إضافة وسيلة موجودة
+            // الوسائل المضافة (تظهر فوق)
             // =========================
-            const Text(
-              'إضافة وسيلة موجودة',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+            if (myMethods.isNotEmpty) ...[
+              const Text(
+                'وسائلي المضافة',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    DropdownButtonFormField<int>(
-                      value: selectedMethodId,
-                      hint: const Text('اختر وسيلة دفع'),
-                      items: methods.map<DropdownMenuItem<int>>((m) {
-                        final id = m['id'] is int
-                            ? m['id'] as int
-                            : int.tryParse(m['id'].toString()) ?? 0;
-                        return DropdownMenuItem(
-                          value: id,
-                          child: Row(
-                            children: [
-                              if (m['logo_path'] != null)
-                                Image.network(
-                                  Api.post(m['logo_path']),
-                                  width: 24,
-                                  height: 24,
-                                  errorBuilder: (_, __, ___) =>
-                                      const SizedBox(),
-                                ),
-                              const SizedBox(width: 8),
-                              Text(m['method_name']),
-                            ],
+              const SizedBox(height: 8),
+              ...myMethods.map((method) => Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    child: ListTile(
+                      leading: method['logo_path'] != null
+                          ? Image.network(
+                              Api.post(method['logo_path']),
+                              width: 32,
+                              height: 32,
+                              errorBuilder: (_, __, ___) =>
+                                  const Icon(Icons.payment),
+                            )
+                          : const Icon(Icons.payment, color: Colors.teal),
+                      title: Text(method['method_name'] ?? ''),
+                      subtitle: Text(method['account_number'] ?? ''),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.teal),
+                        onPressed: () => editMethod(method),
+                      ),
+                    ),
+                  )),
+              const SizedBox(height: 16),
+            ],
+
+            // =========================
+            // إضافة وسيلة موجودة (تظهر فقط إذا كانت هناك وسائل متاحة)
+            // =========================
+            if (availableMethods.isNotEmpty) ...[
+              const Text(
+                'إضافة وسيلة موجودة',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      DropdownButtonFormField<int>(
+                        value: selectedMethodId,
+                        hint: const Text('اختر وسيلة دفع'),
+                        items: availableMethods.map<DropdownMenuItem<int>>((m) {
+                          final id = m['id'] is int
+                              ? m['id'] as int
+                              : int.tryParse(m['id'].toString()) ?? 0;
+                          return DropdownMenuItem(
+                            value: id,
+                            child: Row(
+                              children: [
+                                if (m['logo_path'] != null)
+                                  Image.network(
+                                    Api.post(m['logo_path']),
+                                    width: 24,
+                                    height: 24,
+                                    errorBuilder: (_, __, ___) =>
+                                        const SizedBox(),
+                                  ),
+                                const SizedBox(width: 8),
+                                Text(m['method_name']),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setState(() => selectedMethodId = v),
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        );
-                      }).toList(),
-                      onChanged: (v) => setState(() => selectedMethodId = v),
-                      decoration: InputDecoration(
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        contentPadding:
-                            const EdgeInsets.symmetric(horizontal: 12),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: accountController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'رقم الحساب',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 12),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: saveMethod,
-                      icon: const Icon(Icons.save),
-                      label: const Text('حفظ'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(double.infinity, 45),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: accountController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: 'رقم الحساب',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: saveMethod,
+                        icon: const Icon(Icons.save),
+                        label: const Text('حفظ'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 45),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(height: 24),
+            ],
 
-            const SizedBox(height: 24),
-
-            // زر هل لديك وسيلة أخرى؟
+            // =========================
+            // زر "هل لديك وسيلة أخرى؟"
+            // =========================
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
