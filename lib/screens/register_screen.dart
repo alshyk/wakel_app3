@@ -199,7 +199,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             Icon(Icons.flag, color: Colors.teal.shade600),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
+                          borderSide: const BorderSide(
+                              color: Colors.black), // ✅ حد أسود
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: const BorderSide(
+                              color: Colors.black), // ✅ حد أسود
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide:
+                              const BorderSide(color: Colors.black, width: 1.5),
                         ),
                         contentPadding: const EdgeInsets.symmetric(
                             vertical: 14, horizontal: 16),
@@ -239,7 +250,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           Icon(Icons.badge, color: Colors.teal.shade600),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide:
+                            const BorderSide(color: Colors.black), // ✅ حد أسود
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black), // ✅ حد أسود
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black, width: 1.5),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 16, horizontal: 20),
@@ -272,7 +294,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           color: Colors.teal.shade600),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide:
+                            const BorderSide(color: Colors.black), // ✅ حد أسود
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black), // ✅ حد أسود
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black, width: 1.5),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 16, horizontal: 20),
@@ -306,7 +339,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           Icon(Icons.lock_outline, color: Colors.teal.shade600),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide:
+                            const BorderSide(color: Colors.black), // ✅ حد أسود
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black), // ✅ حد أسود
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black, width: 1.5),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 16, horizontal: 20),

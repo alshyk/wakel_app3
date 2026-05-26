@@ -160,7 +160,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           color: Colors.teal.shade600),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide: const BorderSide(color: Colors.black),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.black),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black, width: 1.5),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 16, horizontal: 20),
@@ -194,7 +203,16 @@ class _LoginScreenState extends State<LoginScreen> {
                           Icon(Icons.lock_outline, color: Colors.teal.shade600),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+                        borderSide: const BorderSide(color: Colors.black),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Colors.black),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide:
+                            const BorderSide(color: Colors.black, width: 1.5),
                       ),
                       contentPadding: const EdgeInsets.symmetric(
                           vertical: 16, horizontal: 20),
