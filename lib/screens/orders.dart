@@ -11,6 +11,7 @@ import 'deposit_screen.dart';
 import 'withdrawal_screen.dart';
 import 'raise_limit_screen.dart';
 import 'test_screen.dart';
+import 'gate_screen.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -31,7 +32,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   final NumberFormat _formatter = NumberFormat('#,###', 'en');
 
   // ══════════════════════════════════════
-  // Polling — حارس مزدوج
+  // Polling — تايمر واحد يتحكم بكل شيء
   // ══════════════════════════════════════
   Timer? _pollTimer;
   bool _pollingActive = false;
@@ -42,14 +43,14 @@ class _OrdersScreenState extends State<OrdersScreen>
   Map<String, dynamic>? _currentOrder;
   bool _orderVisible = false; // sheet مفتوح
   bool _orderBusy = false; // في شاشة إيداع/سحب
-  bool _orderLocked = false; // ← التعديل 1
+  bool _orderLocked = false;
 
   // ══════════════════════════════════════
   // حالة الـ Sheet
   // ══════════════════════════════════════
   Timer? _sheetTimer;
-  Timer? _delayTimer; // لإلغاء أي Future.delayed
-  int _sheetSeconds = 10;
+  Timer? _delayTimer;
+  int _sheetSeconds = 60;
   bool _isChecked = false;
   bool _isClaiming = false;
   bool _claimDone = false;
@@ -76,15 +77,13 @@ class _OrdersScreenState extends State<OrdersScreen>
   void dispose() {
     print("🔴 dispose: تنظيف الشاشة");
     WidgetsBinding.instance.removeObserver(this);
-    _stopPolling();
+    _stopPolling(); // يطفئ pollTimer و delayTimer
     _sheetTimer?.cancel();
-    _delayTimer?.cancel();
     _audioPlayer.stop();
     _audioPlayer.dispose();
     super.dispose();
   }
 
-  /// عندما يرجع التطبيق من الخلفية — لا نبدأ polling لو الـ sheet مفتوح
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     print("📱 didChangeAppLifecycleState: $state");
@@ -123,7 +122,9 @@ class _OrdersScreenState extends State<OrdersScreen>
 
     print("✅ التوكن موجود → جلب لوحة المعلومات");
     await _fetchDashboard();
-    if (mounted) _startPolling();
+    if (mounted) {
+      _startPolling(); // يبدأ التايمر الوحيد
+    }
   }
 
   // ══════════════════════════════════════
@@ -164,16 +165,18 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   // ══════════════════════════════════════
-  // Polling
+  // Polling - التايمر الوحيد
   // ══════════════════════════════════════
 
   void _startPolling() {
-    print("🟡 _startPolling: محاولة بدء polling");
-    // شروط البدء — أي شرط ناقص يوقف كل شيء
-    if (_pollingActive) {
-      print("⚠️ polling نشط بالفعل → إرجاع");
-      return;
-    }
+    print("🟡 _startPolling: بدء polling (يطفئ كل شيء أولاً)");
+    // أطفئ كل شيء أولاً
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _pollingActive = false;
+    _delayTimer?.cancel();
+    _delayTimer = null;
+
     if (_orderLocked) {
       print("⚠️ _orderLocked == true → إرجاع");
       return;
@@ -200,23 +203,32 @@ class _OrdersScreenState extends State<OrdersScreen>
       return;
     }
 
-    print("✅ بدء polling كل 5 ثوانٍ");
+    print("✅ بدء polling كل 30 ثانية (قابل للتعديل لـ 500 لاحقاً)");
     _pollingActive = true;
-    _pollTimer =
-        Timer.periodic(const Duration(seconds: 5), (_) => _checkOrder());
+    _pollTimer = Timer.periodic(
+      const Duration(seconds: 30), // بعد التطوير سيصبح 500
+      (_) => _checkOrder(),
+    );
   }
 
   void _stopPolling() {
-    print("🛑 _stopPolling: إيقاف polling");
+    print("🛑 _stopPolling: إيقاف التايمر الوحيد وتنظيفه");
     _pollTimer?.cancel();
     _pollTimer = null;
     _pollingActive = false;
+    _delayTimer?.cancel();
+    _delayTimer = null;
   }
 
-  /// يبدأ polling بعد تأخير قابل للإلغاء
   void _startPollingAfterDelay(int seconds) {
-    print("⏰ _startPollingAfterDelay: بدء polling بعد $seconds ثانية");
+    print(
+        "⏰ _startPollingAfterDelay: إطفاء الكل ثم بدء polling بعد $seconds ثانية");
+    // أطفئ كل شيء أولاً
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _pollingActive = false;
     _delayTimer?.cancel();
+
     _delayTimer = Timer(Duration(seconds: seconds), () {
       print("⏰ بعد $seconds ثانية → بدء polling");
       if (!mounted) return;
@@ -226,17 +238,17 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   Future<void> _checkOrder() async {
     print("🔍 _checkOrder: بدء فحص الطلبات");
-    // التعديل 2
     if (_orderLocked || _orderVisible || _orderBusy) {
-      print("⚠️ _checkOrder: تخطي بسبب orderLocked=$_orderLocked, orderVisible=$_orderVisible, orderBusy=$_orderBusy");
+      print("⚠️ _checkOrder: تخطي بسبب حالة الطلب");
       return;
     }
-    if (_token == null) {
-      print("⚠️ _checkOrder: لا يوجد توكن");
-      return;
-    }
-    if (!mounted) return;
+    if (_token == null || !mounted) return;
 
+    // ① فحص حالة الوكيل أولاً
+    final statusOk = await _checkAgentStatus();
+    if (!statusOk) return;
+
+    // ② فحص الطلبات
     try {
       final res = await http.get(
         Uri.parse(Api.checkOrder()),
@@ -253,15 +265,12 @@ class _OrdersScreenState extends State<OrdersScreen>
 
       if (data['success'] == true && data['found'] == true) {
         print("✅ تم العثور على طلب جديد: id=${data['id']}");
-        // التعديل 3
         _orderLocked = true;
-        _stopPolling();
-        _startPollingAfterDelay(120);
+        _stopPolling(); // يطفئ التايمر فوراً
 
         _orderVisible = true;
         _currentOrder = data;
 
-        // تشغيل الصوت بأمان
         print("🔊 تشغيل صوت الإشعار");
         try {
           await _audioPlayer.play(AssetSource('sounds/notification.mp3'));
@@ -269,7 +278,6 @@ class _OrdersScreenState extends State<OrdersScreen>
           print("⚠️ فشل تشغيل الصوت: $e");
         }
 
-        // التعديل 4
         if (!mounted) {
           print("❌ _checkOrder: !mounted بعد تشغيل الصوت → إلغاء القفل");
           _orderLocked = false;
@@ -284,10 +292,50 @@ class _OrdersScreenState extends State<OrdersScreen>
         print("📢 فتح Bottom Sheet للطلب");
         _showOrderSheet(data);
       } else {
-        print("ℹ️ لا يوجد طلب جديد (found=false أو success=false)");
+        print("ℹ️ لا يوجد طلب جديد");
       }
     } catch (e) {
       print("🔥 _checkOrder error: $e");
+    }
+  }
+
+  // ══════════════════════════════════════
+  // فحص حالة الوكيل وإرجاع bool
+  // ══════════════════════════════════════
+  Future<bool> _checkAgentStatus() async {
+    if (!mounted) return false;
+    try {
+      final res = await http.get(
+        Uri.parse(Api.me()),
+        headers: {'Authorization': 'Bearer $_token'},
+      );
+      if (!mounted) return false;
+      final data = jsonDecode(res.body);
+      if (data['success'] != true) return true; // خطأ سيرفر - كمل
+
+      final d = data['data'];
+      final status = d['status'] ?? '';
+      final hasDispute = d['has_open_dispute'] == true;
+      final hasPayment = d['has_payment_methods'] == true;
+
+      if (status != 'active' || hasDispute || !hasPayment) {
+        print("⚠️ _checkAgentStatus: حالة غير نشطة → الرجوع إلى GateScreen");
+        _stopPolling();
+        _sheetTimer?.cancel();
+        _orderVisible = false;
+        _orderLocked = false;
+        _orderBusy = false;
+        if (!mounted) return false;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const GateScreen()),
+          (route) => false,
+        );
+        return false;
+      }
+      return true;
+    } catch (_) {
+      return true; // خطأ شبكة - كمل
     }
   }
 
@@ -302,7 +350,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       headers: {'Authorization': 'Bearer $_token'},
       body: {'order_id': orderId.toString(), 'type': type},
     );
-    // التعديل 6
     if (!mounted) return;
     final data = jsonDecode(res.body);
     print("📡 claimOrder response: ${res.statusCode} | body: ${res.body}");
@@ -318,11 +365,10 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   void _startSheetTimer(VoidCallback onTimeout) {
-    print("🟡 _startSheetTimer: بدء مؤقت الـ sheet (10 ثوانٍ)");
+    print("🟡 _startSheetTimer: بدء مؤقت الـ sheet (60 ثانية)");
     _sheetTimer?.cancel();
-    _sheetSeconds = 10;
+    _sheetSeconds = 60;
     _sheetTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      // ✅ التعديل المطلوب: إزالة شرط !_orderVisible
       if (!mounted) {
         t.cancel();
         return;
@@ -351,9 +397,6 @@ class _OrdersScreenState extends State<OrdersScreen>
   void _showOrderSheet(Map<String, dynamic> order) {
     print("📢 _showOrderSheet: فتح الـ sheet للطلب رقم ${order['id']}");
     if (!mounted) return;
-    if (_orderVisible && !_orderBusy) {
-      // تأكيد إضافي — إذا كان sheet مفتوح فعلاً لا تفتح ثانياً
-    }
 
     _isChecked = false;
     _isClaiming = false;
@@ -366,12 +409,10 @@ class _OrdersScreenState extends State<OrdersScreen>
       isScrollControlled: true,
       isDismissible: false,
       enableDrag: false,
-      // منع زر الرجوع من إغلاق الـ sheet
       builder: (_) => PopScope(
         canPop: false,
         child: StatefulBuilder(
           builder: (ctx, setSheet) {
-            // تحديث آمن للـ sheet والـ state معاً
             void update(VoidCallback fn) {
               if (!mounted) return;
               setState(() {
@@ -388,8 +429,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 10),
-
-                    // ── عنوان ──
                     Center(
                       child: Text(
                         order['type'] == 'withdrawal' ? "طلب سحب" : "طلب إيداع",
@@ -398,16 +437,11 @@ class _OrdersScreenState extends State<OrdersScreen>
                       ),
                     ),
                     const SizedBox(height: 20),
-
-                    // ── تفاصيل ──
                     _detailRow("المبلغ", "${order['amount']} IQD"),
                     _detailRow("الطريقة", "${order['method'] ?? '-'}"),
                     if (order['client_name'] != null)
                       _detailRow("العميل", "${order['client_name']}"),
-
                     const Spacer(),
-
-                    // ── عداد ──
                     if (!_claimDone) ...[
                       Center(
                         child: Text(
@@ -424,14 +458,12 @@ class _OrdersScreenState extends State<OrdersScreen>
                       ),
                       const SizedBox(height: 8),
                       LinearProgressIndicator(
-                        value: _sheetSeconds / 10,
+                        value: _sheetSeconds / 60,
                         backgroundColor: Colors.grey.shade200,
                         color: _isChecked ? Colors.teal : Colors.redAccent,
                         minHeight: 6,
                       ),
                     ],
-
-                    // ── رسالة الحجز ──
                     if (_claimDone)
                       Container(
                         width: double.infinity,
@@ -456,10 +488,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                           ],
                         ),
                       ),
-
                     const SizedBox(height: 20),
-
-                    // ── Checkbox ──
                     GestureDetector(
                       onTap: (_isChecked || _isClaiming || _claimDone)
                           ? null
@@ -556,10 +585,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 14),
-
-                    // ── زر المتابعة ──
                     GestureDetector(
                       onTap: _claimDone
                           ? () async {
@@ -573,7 +599,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                                   Map<String, dynamic>.from(_currentOrder!);
                               final orderType = orderData['type'] as String;
 
-                              // ضع الوكيل مشغول قبل pop لمنع race condition مع whenComplete
                               _orderBusy = true;
                               _orderVisible = false;
                               _currentOrder = null;
@@ -602,11 +627,13 @@ class _OrdersScreenState extends State<OrdersScreen>
                                 );
                               }
 
-                              // رجع من الشاشة
                               if (!mounted) return;
-                              print("✅ رجوع من شاشة الإيداع/السحب → إعادة تشغيل polling بعد تأخير");
+                              print(
+                                  "✅ رجوع من شاشة الإيداع/السحب → إعادة تشغيل polling بعد تأخير");
                               _orderBusy = false;
-                              _startPollingAfterDelay(500);
+                              _orderLocked = false; // ← يحل المشكلتين
+
+                              _startPollingAfterDelay(20);
                             }
                           : null,
                       child: AnimatedContainer(
@@ -655,7 +682,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 8),
                   ],
                 ),
@@ -669,14 +695,15 @@ class _OrdersScreenState extends State<OrdersScreen>
       _sheetTimer?.cancel();
 
       if (!_orderBusy) {
-        print("🔄 whenComplete: إعادة ضبط الحالة وإعادة تشغيل polling بعد تأخير");
+        print(
+            "🔄 whenComplete: إعادة ضبط الحالة وإعادة تشغيل polling بعد تأخير");
         _orderLocked = false;
         _orderVisible = false;
         _currentOrder = null;
         _isChecked = false;
         _isClaiming = false;
         _claimDone = false;
-        _startPollingAfterDelay(500);
+        _startPollingAfterDelay(20);
       } else {
         print("⚠️ whenComplete: _orderBusy == true → لن نعيد الضبط الآن");
       }
@@ -695,7 +722,8 @@ class _OrdersScreenState extends State<OrdersScreen>
         headers: {'Authorization': 'Bearer $_token'},
         body: {'toggle_available': '1'},
       );
-      print("📡 toggleAvailable response: ${res.statusCode} | body: ${res.body}");
+      print(
+          "📡 toggleAvailable response: ${res.statusCode} | body: ${res.body}");
       if (!mounted) return;
       await _fetchDashboard();
       if (!mounted) return;
@@ -706,7 +734,6 @@ class _OrdersScreenState extends State<OrdersScreen>
       } else {
         print("⏸️ أصبح غير متاح → إيقاف polling وإلغاء أي تأخير");
         _stopPolling();
-        _delayTimer?.cancel();
       }
     } catch (e) {
       print("🔥 _toggleAvailable error: $e");
@@ -720,7 +747,6 @@ class _OrdersScreenState extends State<OrdersScreen>
   Future<void> _logout() async {
     print("🚪 _logout: تسجيل الخروج");
     _stopPolling();
-    _delayTimer?.cancel();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('api_token');
     if (!mounted) return;
@@ -793,8 +819,6 @@ class _OrdersScreenState extends State<OrdersScreen>
           child: Column(
             children: [
               const SizedBox(height: 10),
-
-              // ── مركز التحكم ──
               ElevatedButton(
                 onPressed: () => Navigator.push(
                   context,
@@ -810,8 +834,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                 child: const Text("مركز التحكم"),
               ),
               const SizedBox(height: 20),
-
-              // ── بطاقة الأرقام ──
               Card(
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -829,8 +851,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                 ),
               ),
               const SizedBox(height: 40),
-
-              // ── نص الحالة ──
               Text(
                 isAvailable
                     ? "🟢 أنت الآن متصل — سيتم إرسال الطلبات إليك"
@@ -843,8 +863,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-
-              // ── زر مفتوح/مغلق ──
               GestureDetector(
                 onTap: _isToggling
                     ? null
@@ -946,7 +964,6 @@ class _OrdersScreenState extends State<OrdersScreen>
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
             ],
           ),

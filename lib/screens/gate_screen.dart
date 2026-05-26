@@ -45,7 +45,7 @@ class _GateScreenState extends State<GateScreen> {
     checkUpdate(); // ✅ تحقق من التحديث أول شيء
     fetchGate();
 
-    timer = Timer.periodic(const Duration(seconds: 20), (t) {
+    timer = Timer.periodic(const Duration(hours: 6), (t) {
       fetchGate();
     });
   }
@@ -355,6 +355,10 @@ class _GateScreenState extends State<GateScreen> {
         elevation: 0,
         actions: [
           IconButton(
+            onPressed: fetchGate, // ← زر الرفرش
+            icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
             onPressed: () {
               Navigator.push(
                 context,
@@ -364,7 +368,7 @@ class _GateScreenState extends State<GateScreen> {
               );
             },
             icon: const Icon(Icons.arrow_back),
-          )
+          ),
         ],
       ),
       body: updateUrl.isNotEmpty
