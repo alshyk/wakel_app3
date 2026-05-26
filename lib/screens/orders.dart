@@ -67,30 +67,36 @@ class _OrdersScreenState extends State<OrdersScreen>
   @override
   void initState() {
     super.initState();
+    print("🟢 initState: بدء تهيئة الشاشة");
     WidgetsBinding.instance.addObserver(this);
     _init();
   }
 
   @override
   void dispose() {
+    print("🔴 dispose: تنظيف الشاشة");
     WidgetsBinding.instance.removeObserver(this);
     _stopPolling();
     _sheetTimer?.cancel();
     _delayTimer?.cancel();
-    _audioPlayer.stop(); // ← التعديل 7
-    _audioPlayer.dispose(); // ← التعديل 7
+    _audioPlayer.stop();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
   /// عندما يرجع التطبيق من الخلفية — لا نبدأ polling لو الـ sheet مفتوح
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    print("📱 didChangeAppLifecycleState: $state");
     if (state == AppLifecycleState.resumed) {
       if (!_orderVisible && !_orderBusy) {
+        print("✅ التطبيق عاد من الخلفية → بدء polling");
         _startPolling();
+      } else {
+        print("⚠️ التطبيق عاد لكن الـ sheet مفتوح أو مشغول → لا نبدأ polling");
       }
     } else if (state == AppLifecycleState.paused) {
-      // لما يروح للخلفية — أوقف polling فقط، لا تلمس الـ sheet
+      print("⏸️ التطبيق ذهب للخلفية → إيقاف polling");
       _stopPolling();
     }
   }
@@ -100,10 +106,13 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   Future<void> _init() async {
+    print("🟡 _init: بدء التهيئة");
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString('api_token');
+    print("🔑 التوكن: ${_token != null ? 'موجود' : 'غير موجود'}");
 
     if (_token == null) {
+      print("❌ لا يوجد توكن → عرض خطأ");
       if (!mounted) return;
       setState(() {
         _errorMessage = "جلسة غير صالحة";
@@ -112,6 +121,7 @@ class _OrdersScreenState extends State<OrdersScreen>
       return;
     }
 
+    print("✅ التوكن موجود → جلب لوحة المعلومات");
     await _fetchDashboard();
     if (mounted) _startPolling();
   }
@@ -121,6 +131,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   Future<void> _fetchDashboard() async {
+    print("🟡 _fetchDashboard: بدء جلب لوحة المعلومات");
     try {
       final res = await http.get(
         Uri.parse(Api.dashboard()),
@@ -128,18 +139,22 @@ class _OrdersScreenState extends State<OrdersScreen>
       );
       if (!mounted) return;
       final data = jsonDecode(res.body);
+      print("📡 Response dashboard: ${res.statusCode} | body: ${res.body}");
       if (data['success'] == true) {
+        print("✅ تم جلب لوحة المعلومات بنجاح");
         setState(() {
           _dashboard = data;
           _isLoading = false;
         });
       } else {
+        print("❌ فشل جلب لوحة المعلومات: ${data['message']}");
         setState(() {
           _errorMessage = data['message'] ?? "خطأ";
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      print("🔥 خطأ اتصال في dashboard: $e");
       if (!mounted) return;
       setState(() {
         _errorMessage = "خطأ اتصال";
@@ -153,24 +168,46 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   void _startPolling() {
+    print("🟡 _startPolling: محاولة بدء polling");
     // شروط البدء — أي شرط ناقص يوقف كل شيء
-    if (_pollingActive) return;
-    if (_orderLocked) return; // ← أضف هذا السطر
-
-    if (_orderVisible) return;
-    if (_orderBusy) return;
-    if (!mounted) return;
+    if (_pollingActive) {
+      print("⚠️ polling نشط بالفعل → إرجاع");
+      return;
+    }
+    if (_orderLocked) {
+      print("⚠️ _orderLocked == true → إرجاع");
+      return;
+    }
+    if (_orderVisible) {
+      print("⚠️ _orderVisible == true → إرجاع");
+      return;
+    }
+    if (_orderBusy) {
+      print("⚠️ _orderBusy == true → إرجاع");
+      return;
+    }
+    if (!mounted) {
+      print("⚠️ !mounted → إرجاع");
+      return;
+    }
 
     final limit = _toDouble(_dashboard?['limit']);
     final isAvailable = _dashboard?['is_available'] == true;
-    if (limit <= 0 || !isAvailable) return;
+    print("💰 limit = $limit, isAvailable = $isAvailable");
 
+    if (limit <= 0 || !isAvailable) {
+      print("⛔ limit <=0 أو غير متاح → لن نبدأ polling");
+      return;
+    }
+
+    print("✅ بدء polling كل 5 ثوانٍ");
     _pollingActive = true;
     _pollTimer =
         Timer.periodic(const Duration(seconds: 5), (_) => _checkOrder());
   }
 
   void _stopPolling() {
+    print("🛑 _stopPolling: إيقاف polling");
     _pollTimer?.cancel();
     _pollTimer = null;
     _pollingActive = false;
@@ -178,17 +215,26 @@ class _OrdersScreenState extends State<OrdersScreen>
 
   /// يبدأ polling بعد تأخير قابل للإلغاء
   void _startPollingAfterDelay(int seconds) {
+    print("⏰ _startPollingAfterDelay: بدء polling بعد $seconds ثانية");
     _delayTimer?.cancel();
     _delayTimer = Timer(Duration(seconds: seconds), () {
+      print("⏰ بعد $seconds ثانية → بدء polling");
       if (!mounted) return;
       _startPolling();
     });
   }
 
   Future<void> _checkOrder() async {
+    print("🔍 _checkOrder: بدء فحص الطلبات");
     // التعديل 2
-    if (_orderLocked || _orderVisible || _orderBusy) return;
-    if (_token == null) return;
+    if (_orderLocked || _orderVisible || _orderBusy) {
+      print("⚠️ _checkOrder: تخطي بسبب orderLocked=$_orderLocked, orderVisible=$_orderVisible, orderBusy=$_orderBusy");
+      return;
+    }
+    if (_token == null) {
+      print("⚠️ _checkOrder: لا يوجد توكن");
+      return;
+    }
     if (!mounted) return;
 
     try {
@@ -197,37 +243,51 @@ class _OrdersScreenState extends State<OrdersScreen>
         headers: {'Authorization': 'Bearer $_token'},
       );
       if (!mounted) return;
-      if (_orderLocked || _orderVisible || _orderBusy)
-        return; // فحص ثانٍ بعد الـ await
+      if (_orderLocked || _orderVisible || _orderBusy) {
+        print("⚠️ _checkOrder بعد الـ await: حالة تغيرت → تخطي");
+        return;
+      }
 
       final data = jsonDecode(res.body);
+      print("📡 checkOrder response: ${res.statusCode} | body: ${res.body}");
+
       if (data['success'] == true && data['found'] == true) {
-        // وصل طلب — أوقف polling فوراً قبل أي شيء
+        print("✅ تم العثور على طلب جديد: id=${data['id']}");
         // التعديل 3
         _orderLocked = true;
         _stopPolling();
+        _startPollingAfterDelay(120);
+
         _orderVisible = true;
         _currentOrder = data;
 
         // تشغيل الصوت بأمان
+        print("🔊 تشغيل صوت الإشعار");
         try {
           await _audioPlayer.play(AssetSource('sounds/notification.mp3'));
-        } catch (_) {}
+        } catch (e) {
+          print("⚠️ فشل تشغيل الصوت: $e");
+        }
 
         // التعديل 4
         if (!mounted) {
+          print("❌ _checkOrder: !mounted بعد تشغيل الصوت → إلغاء القفل");
           _orderLocked = false;
           return;
         }
         if (!_orderVisible) {
+          print("❌ _checkOrder: _orderVisible أصبح false → إلغاء القفل");
           _orderLocked = false;
           return;
         }
 
+        print("📢 فتح Bottom Sheet للطلب");
         _showOrderSheet(data);
+      } else {
+        print("ℹ️ لا يوجد طلب جديد (found=false أو success=false)");
       }
     } catch (e) {
-      debugPrint("checkOrder error: $e");
+      print("🔥 _checkOrder error: $e");
     }
   }
 
@@ -236,6 +296,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   Future<void> _claimOrder(int orderId, String type) async {
+    print("🟡 _claimOrder: بدء حجز الطلب $orderId (نوع: $type)");
     final res = await http.post(
       Uri.parse(Api.post("agent/claim-order.php")),
       headers: {'Authorization': 'Bearer $_token'},
@@ -244,9 +305,12 @@ class _OrdersScreenState extends State<OrdersScreen>
     // التعديل 6
     if (!mounted) return;
     final data = jsonDecode(res.body);
+    print("📡 claimOrder response: ${res.statusCode} | body: ${res.body}");
     if (data['success'] != true) {
+      print("❌ فشل حجز الطلب: ${data['message']}");
       throw Exception(data['message'] ?? "فشل حجز الطلب");
     }
+    print("✅ تم حجز الطلب بنجاح");
   }
 
   // ══════════════════════════════════════
@@ -254,16 +318,19 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   void _startSheetTimer(VoidCallback onTimeout) {
+    print("🟡 _startSheetTimer: بدء مؤقت الـ sheet (10 ثوانٍ)");
     _sheetTimer?.cancel();
     _sheetSeconds = 10;
     _sheetTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted || !_orderVisible) {
+      // ✅ التعديل المطلوب: إزالة شرط !_orderVisible
+      if (!mounted) {
         t.cancel();
         return;
       }
       if (_sheetSeconds > 1) {
         setState(() => _sheetSeconds--);
       } else {
+        print("⏰ انتهاء وقت الـ sheet → إغلاق");
         t.cancel();
         onTimeout();
       }
@@ -271,6 +338,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   }
 
   void _closeSheetByTimeout() {
+    print("🔄 _closeSheetByTimeout: إغلاق الـ sheet بسبب انتهاء الوقت");
     _sheetTimer?.cancel();
     if (!mounted || !_orderVisible) return;
     Navigator.of(context).pop();
@@ -281,6 +349,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   void _showOrderSheet(Map<String, dynamic> order) {
+    print("📢 _showOrderSheet: فتح الـ sheet للطلب رقم ${order['id']}");
     if (!mounted) return;
     if (_orderVisible && !_orderBusy) {
       // تأكيد إضافي — إذا كان sheet مفتوح فعلاً لا تفتح ثانياً
@@ -395,13 +464,14 @@ class _OrdersScreenState extends State<OrdersScreen>
                       onTap: (_isChecked || _isClaiming || _claimDone)
                           ? null
                           : () async {
+                              print("🖱️ المستخدم ضغط على مربع التأكيد");
                               _sheetTimer?.cancel();
                               update(() => _isClaiming = true);
 
                               try {
                                 await _claimOrder(order['id'] as int,
                                     order['type'] as String);
-
+                                print("✅ حجز الطلب بنجاح → تحديث الواجهة");
                                 if (!mounted) return;
                                 update(() {
                                   _isChecked = true;
@@ -410,6 +480,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                                 });
                                 _startSheetTimer(_closeSheetByTimeout);
                               } catch (e) {
+                                print("❌ فشل حجز الطلب: $e");
                                 if (!mounted) return;
                                 update(() => _isClaiming = false);
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -492,6 +563,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                     GestureDetector(
                       onTap: _claimDone
                           ? () async {
+                              print("🖱️ المستخدم ضغط على زر متابعة");
                               _sheetTimer?.cancel();
                               _delayTimer?.cancel();
 
@@ -513,6 +585,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                               if (!mounted) return;
 
                               if (orderType == 'deposit') {
+                                print("💰 التوجيه إلى شاشة الإيداع");
                                 await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -520,6 +593,7 @@ class _OrdersScreenState extends State<OrdersScreen>
                                           DepositScreen(order: orderData)),
                                 );
                               } else {
+                                print("💰 التوجيه إلى شاشة السحب");
                                 await Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -530,8 +604,9 @@ class _OrdersScreenState extends State<OrdersScreen>
 
                               // رجع من الشاشة
                               if (!mounted) return;
+                              print("✅ رجوع من شاشة الإيداع/السحب → إعادة تشغيل polling بعد تأخير");
                               _orderBusy = false;
-                              _startPollingAfterDelay(120);
+                              _startPollingAfterDelay(500);
                             }
                           : null,
                       child: AnimatedContainer(
@@ -590,19 +665,20 @@ class _OrdersScreenState extends State<OrdersScreen>
         ),
       ),
     ).whenComplete(() {
-      // التعديل 5
-      _orderLocked = false;
+      print("🗑️ whenComplete: تم إغلاق الـ sheet");
       _sheetTimer?.cancel();
 
-      // لو الوكيل ضغط متابعة — _orderBusy = true بالفعل، لا نتدخل
-      // لو timeout أو أي سبب آخر — نعيد الضبط ونبدأ polling
       if (!_orderBusy) {
+        print("🔄 whenComplete: إعادة ضبط الحالة وإعادة تشغيل polling بعد تأخير");
+        _orderLocked = false;
         _orderVisible = false;
         _currentOrder = null;
         _isChecked = false;
         _isClaiming = false;
         _claimDone = false;
-        _startPollingAfterDelay(120);
+        _startPollingAfterDelay(500);
+      } else {
+        print("⚠️ whenComplete: _orderBusy == true → لن نعيد الضبط الآن");
       }
     });
   }
@@ -612,25 +688,28 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   Future<void> _toggleAvailable() async {
+    print("🔄 _toggleAvailable: تبديل حالة التوفر");
     try {
       final res = await http.post(
         Uri.parse(Api.radar()),
         headers: {'Authorization': 'Bearer $_token'},
         body: {'toggle_available': '1'},
       );
-      debugPrint("toggleAvailable: ${res.statusCode}");
+      print("📡 toggleAvailable response: ${res.statusCode} | body: ${res.body}");
       if (!mounted) return;
       await _fetchDashboard();
       if (!mounted) return;
 
       if (_dashboard?['is_available'] == true) {
+        print("✅ أصبح متاحاً → بدء polling");
         _startPolling();
       } else {
+        print("⏸️ أصبح غير متاح → إيقاف polling وإلغاء أي تأخير");
         _stopPolling();
-        _delayTimer?.cancel(); // إلغاء أي delayed polling
+        _delayTimer?.cancel();
       }
     } catch (e) {
-      debugPrint("toggleAvailable error: $e");
+      print("🔥 _toggleAvailable error: $e");
     }
   }
 
@@ -639,6 +718,7 @@ class _OrdersScreenState extends State<OrdersScreen>
   // ══════════════════════════════════════
 
   Future<void> _logout() async {
+    print("🚪 _logout: تسجيل الخروج");
     _stopPolling();
     _delayTimer?.cancel();
     final prefs = await SharedPreferences.getInstance();
