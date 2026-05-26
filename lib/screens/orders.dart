@@ -820,10 +820,20 @@ class _OrdersScreenState extends State<OrdersScreen>
             children: [
               const SizedBox(height: 10),
               ElevatedButton(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const TestScreen()),
-                ),
+                onPressed: isAvailable
+                    ? () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                                "أوقف استلام الطلبات أولاً قبل الدخول لمركز التحكم"),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    : () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const TestScreen()),
+                        ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal,
                   foregroundColor: Colors.white,
