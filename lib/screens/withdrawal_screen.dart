@@ -25,6 +25,8 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   int seconds = 0;
   Timer? timer;
 
+  bool _isPicking = false; // ✅ منع الضغط المتكرر
+
   @override
   void initState() {
     super.initState();
@@ -108,7 +110,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
       print("⏱️ seconds المستلمة من API: $seconds");
 
       if (seconds < 60) {
-        seconds = 600; // 10 دقائق
+        seconds = 600;
         print("⚠️ seconds أقل من 60 -> تم ضبطه إلى 600 ثانية (10 دقائق)");
       }
       print("⏱️ seconds النهائية: $seconds");
@@ -125,7 +127,6 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         print("⏰ Timer: انتهى الوقت");
         timer?.cancel();
         if (mounted) {
-          print("📢 عرض SnackBar انتهاء الوقت والخروج من الشاشة");
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('انتهى الوقت المخصص للتحويل')),
           );
@@ -144,7 +145,10 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     return "$m:${s.toString().padLeft(2, '0')}";
   }
 
+  // ✅ التعديل المطلوب
   Future<void> pickImage() async {
+    if (_isPicking) return;
+    _isPicking = true;
     print("🟡 pickImage: فتح المعرض لاختيار صورة");
     final picked = await ImagePicker().pickImage(
       source: ImageSource.gallery,
@@ -158,6 +162,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     } else {
       print("❌ لم يتم اختيار أي صورة");
     }
+    _isPicking = false;
   }
 
   Future<void> confirmProof() async {
@@ -210,22 +215,19 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print("🎨 build: إعادة بناء الواجهة (loading=$loading, details=${details != null})");
+    print(
+        "🎨 build: إعادة بناء الواجهة (loading=$loading, details=${details != null})");
     if (loading) {
-      print("🔄 عرض شاشة التحميل");
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (details == null) {
-      print("⚠️ عرض رسالة خطأ لعدم وجود details");
       return Scaffold(
         body: Center(child: Text('حدث خطأ في تحميل تفاصيل الطلب')),
       );
     }
-
-    print("✅ عرض المحتوى الأساسي للشاشة");
 
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
@@ -233,7 +235,8 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text("سحب آمن", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("سحب آمن",
+            style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: isDark ? Colors.grey.shade900 : Colors.white,
@@ -243,7 +246,6 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // بطاقة رأسية ترحيبية بسيطة
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
@@ -255,23 +257,28 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                 ),
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
-                  BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))
+                  BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 8,
+                      offset: Offset(0, 4))
                 ],
               ),
               child: Column(
                 children: [
-                  const Icon(Icons.account_balance_wallet, size: 48, color: Colors.white),
+                  const Icon(Icons.account_balance_wallet,
+                      size: 48, color: Colors.white),
                   const SizedBox(height: 8),
                   Text(
                     "طلب سحب برقم #${widget.order['id']}",
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 24),
-
-            // بطاقات المعلومات (إعادة تصميم box)
             _buildInfoCard(
               title: "ربحك من العملية",
               value: "${(details!['profit'] as num).toStringAsFixed(0)} IQD",
@@ -300,15 +307,16 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               color: Colors.purple,
             ),
             const SizedBox(height: 20),
-
-            // الوقت المتبقي
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: isDark ? Colors.grey.shade800 : Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))
+                  BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 6,
+                      offset: Offset(0, 3))
                 ],
               ),
               child: Row(
@@ -319,11 +327,15 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text("الوقت المتبقي", style: TextStyle(fontSize: 14, color: Colors.grey)),
+                        const Text("الوقت المتبقي",
+                            style: TextStyle(fontSize: 14, color: Colors.grey)),
                         const SizedBox(height: 4),
                         Text(
                           formatTime(),
-                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.orange.shade700),
+                          style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade700),
                         ),
                       ],
                     ),
@@ -345,21 +357,23 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30)),
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 20),
-
-            // رفع الصورة
             Container(
               decoration: BoxDecoration(
                 color: isDark ? Colors.grey.shade800 : Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))
+                  BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 6,
+                      offset: Offset(0, 3))
                 ],
               ),
               child: Column(
@@ -367,7 +381,9 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                 children: [
                   const Padding(
                     padding: EdgeInsets.all(16),
-                    child: Text("إثبات التحويل", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: Text("إثبات التحويل",
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                   GestureDetector(
                     onTap: pickImage,
@@ -375,23 +391,30 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                       height: 160,
                       margin: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400, width: 1.5),
+                        border:
+                            Border.all(color: Colors.grey.shade400, width: 1.5),
                         borderRadius: BorderRadius.circular(16),
-                        color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+                        color: isDark
+                            ? Colors.grey.shade900
+                            : Colors.grey.shade100,
                       ),
                       child: Center(
                         child: image == null
                             ? Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.cloud_upload, size: 48, color: Colors.grey.shade600),
+                                  Icon(Icons.cloud_upload,
+                                      size: 48, color: Colors.grey.shade600),
                                   const SizedBox(height: 8),
-                                  Text("اضغط لاختيار صورة", style: TextStyle(color: Colors.grey.shade600)),
+                                  Text("اضغط لاختيار صورة",
+                                      style: TextStyle(
+                                          color: Colors.grey.shade600)),
                                 ],
                               )
                             : ClipRRect(
                                 borderRadius: BorderRadius.circular(16),
-                                child: Image.file(image!, fit: BoxFit.cover, width: double.infinity),
+                                child: Image.file(image!,
+                                    fit: BoxFit.cover, width: double.infinity),
                               ),
                       ),
                     ),
@@ -405,12 +428,14 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                         child: ElevatedButton.icon(
                           onPressed: confirmProof,
                           icon: const Icon(Icons.send),
-                          label: const Text("تأكيد إرسال الإثبات", style: TextStyle(fontSize: 16)),
+                          label: const Text("تأكيد إرسال الإثبات",
+                              style: TextStyle(fontSize: 16)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.teal,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(40)),
                           ),
                         ),
                       ),
@@ -426,7 +451,11 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     );
   }
 
-  Widget _buildInfoCard({required String title, required String value, required IconData icon, required Color color}) {
+  Widget _buildInfoCard(
+      {required String title,
+      required String value,
+      required IconData icon,
+      required Color color}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       width: double.infinity,
@@ -453,11 +482,16 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                Text(title,
+                    style:
+                        TextStyle(fontSize: 14, color: Colors.grey.shade600)),
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87),
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87),
                 ),
               ],
             ),
