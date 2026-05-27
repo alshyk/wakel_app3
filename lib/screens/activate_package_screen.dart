@@ -36,7 +36,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
     super.dispose();
   }
 
-  // ─── جلب المحفظة ───────────────────────────────────────────
   Future<void> fetchWallet() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('api_token');
@@ -61,7 +60,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
     }
   }
 
-  // ─── اختيار صورة ───────────────────────────────────────────
   Future<void> pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked != null && mounted) {
@@ -69,8 +67,11 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
     }
   }
 
-  // ─── إرسال الطلب ───────────────────────────────────────────
   Future<void> submit() async {
+    if (txidController.text.trim().isEmpty) {
+      _showSnack("يرجى إدخال رقم العملية TXID");
+      return;
+    }
     if (image == null) {
       _showSnack("يرجى رفع صورة الإثبات أولاً");
       return;
@@ -117,7 +118,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
     );
   }
 
-  // ─── Build ──────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -125,10 +125,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
         body: Center(child: CircularProgressIndicator(color: Colors.teal)),
       );
     }
-
-    final title = widget.package['title'] ?? '';
-    final amount =
-        double.tryParse(widget.package['amount_usdt'].toString())?.toInt() ?? 0;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F8),
@@ -149,28 +145,68 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
             const SizedBox(height: 16),
           ],
 
-          // ── الخطوات ─────────────────────────────────────────
-          _stepsIndicator(),
-          const SizedBox(height: 20),
-
-          // ── بطاقة الباقة ─────────────────────────────────────
-          _sectionLabel("الباقة المختارة"),
-          const SizedBox(height: 8),
-          _packageCard(title, amount),
+          // ── صورة TRC20 ──────────────────────────────────────
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              'assets/images/trc20.png',
+              width: double.infinity,
+              fit: BoxFit.fitWidth,
+            ),
+          ),
           const SizedBox(height: 20),
 
           // ── تنبيه الشبكة ─────────────────────────────────────
           _alertBox("يجب الإرسال عبر شبكة TRC20 حصراً"),
           const SizedBox(height: 20),
 
-          // ── عنوان المحفظة ──────────────────────────────────
-          _sectionLabel("عنوان محفظة الاستقبال"),
+          // ── زر نسخ عنوان المحفظة ───────────────────────────
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: wallet));
+                _showSnack("✅ تم نسخ عنوان المحفظة");
+              },
+              icon: const Icon(Icons.copy_rounded, size: 20),
+              label: const Text(
+                "نسخ عنوان محفظة الاستقبال",
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 52),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 2,
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
-          _walletCard(),
+
+          // ── عنوان المحفظة قابل للتحديد ─────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: SelectableText(
+              wallet,
+              textDirection: TextDirection.ltr,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                  letterSpacing: 0.5),
+            ),
+          ),
           const SizedBox(height: 20),
 
-          // ── TXID ────────────────────────────────────────────
-          _sectionLabel("رقم العملية TXID (اختياري)"),
+          // ── TXID إلزامي ─────────────────────────────────────
+          _sectionLabel("رقم العملية TXID (إلزامي)"),
           const SizedBox(height: 8),
           _txidField(),
           const SizedBox(height: 20),
@@ -183,51 +219,12 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
 
           // ── زر الإرسال ──────────────────────────────────────
           _submitButton(),
-          const SizedBox(height: 12),
-          _backButton(),
           const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  // ─── مؤشر الخطوات الثلاث ───────────────────────────────────
-  Widget _stepsIndicator() {
-    final steps = ["التحويل", "TXID", "الإثبات"];
-    return Row(
-      children: List.generate(steps.length * 2 - 1, (i) {
-        if (i.isOdd) {
-          return Expanded(
-            child: Container(
-              height: 2,
-              color: Colors.teal.shade200,
-            ),
-          );
-        }
-        final idx = i ~/ 2;
-        return Column(
-          children: [
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.teal,
-              child: Text(
-                "${idx + 1}",
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(steps[idx],
-                style: TextStyle(fontSize: 11, color: Colors.teal.shade700)),
-          ],
-        );
-      }),
-    );
-  }
-
-  // ─── عنوان القسم ────────────────────────────────────────────
   Widget _sectionLabel(String text) => Text(
         text,
         style: const TextStyle(
@@ -236,62 +233,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
             color: Color(0xFF444444)),
       );
 
-  // ─── بطاقة الباقة ───────────────────────────────────────────
-  Widget _packageCard(String title, int amount) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.teal.shade100),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: Colors.teal.shade50,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.inventory_2_rounded,
-                color: Colors.teal, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text("قيمة الباقة",
-                    style:
-                        TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.teal,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              "$amount USDT",
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── تنبيه ──────────────────────────────────────────────────
   Widget _alertBox(String text, {bool isError = false}) {
     final color = isError ? Colors.red : Colors.orange;
     return Container(
@@ -318,51 +259,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
     );
   }
 
-  // ─── بطاقة المحفظة ──────────────────────────────────────────
-  Widget _walletCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // العنوان
-          SelectableText(
-            wallet,
-            textDirection: TextDirection.ltr,
-            style: const TextStyle(
-                fontSize: 13, fontFamily: 'monospace', letterSpacing: 0.5),
-          ),
-          const SizedBox(height: 12),
-          // زر النسخ
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: wallet));
-                _showSnack("✅ تم نسخ عنوان المحفظة");
-              },
-              icon: const Icon(Icons.copy_rounded, size: 18),
-              label: const Text("نسخ العنوان"),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.teal,
-                side: const BorderSide(color: Colors.teal),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── حقل TXID ───────────────────────────────────────────────
   Widget _txidField() {
     return Container(
       decoration: BoxDecoration(
@@ -375,19 +271,16 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
         controller: txidController,
         textDirection: TextDirection.ltr,
         decoration: InputDecoration(
-          hintText: "أدخل رقم العملية هنا (اختياري)",
+          hintText: "أدخل رقم العملية هنا",
           hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
-          prefixIcon:
-              const Icon(Icons.tag_rounded, color: Colors.teal, size: 20),
           border: InputBorder.none,
           contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
       ),
     );
   }
 
-  // ─── بطاقة صورة الإثبات ─────────────────────────────────────
   Widget _proofImageCard() {
     return Container(
       decoration: BoxDecoration(
@@ -399,7 +292,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // معاينة الصورة إن وُجدت
           if (image != null)
             Stack(
               children: [
@@ -423,7 +315,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
                 ),
               ],
             ),
-          // زر الرفع
           GestureDetector(
             onTap: pickImage,
             child: Container(
@@ -458,7 +349,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
     );
   }
 
-  // ─── زر الإرسال ─────────────────────────────────────────────
   Widget _submitButton() {
     return ElevatedButton(
       onPressed: isSubmitting ? null : submit,
@@ -487,20 +377,6 @@ class _ActivatePackageScreenState extends State<ActivatePackageScreen> {
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
-    );
-  }
-
-  // ─── زر الرجوع ──────────────────────────────────────────────
-  Widget _backButton() {
-    return OutlinedButton(
-      onPressed: () => Navigator.pop(context),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.teal,
-        side: const BorderSide(color: Colors.teal),
-        minimumSize: const Size(double.infinity, 48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-      child: const Text("رجوع", style: TextStyle(fontSize: 15)),
     );
   }
 }
