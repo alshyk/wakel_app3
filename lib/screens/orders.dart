@@ -402,6 +402,51 @@ class _OrdersScreenState extends State<OrdersScreen>
     _isClaiming = false;
     _claimDone = false;
 
+    // ✅ التحقق من السقف قبل عرض الطلب
+    final orderAmount = _toDouble(order['amount']);
+    final remaining = _toDouble(_dashboard?['remaining']);
+
+    if (orderAmount > remaining) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            order['type'] == 'withdrawal'
+                ? "طلب سحب بمبلغ ${order['amount']} IQD"
+                : "طلب إيداع بمبلغ ${order['amount']} IQD",
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          content: const Text(
+            "لا يمكنك استلام هذا الطلب لأنه أعلى من سقفك الحالي\nقم بترقية الخطة",
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _orderLocked = false;
+                _orderVisible = false;
+                _currentOrder = null;
+                _startPollingAfterDelay(20);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text("حسناً"),
+            ),
+          ],
+        ),
+      );
+      return; // ✅ لا تفتح الـ Sheet
+    }
+
     _startSheetTimer(_closeSheetByTimeout);
 
     showModalBottomSheet(
@@ -493,6 +538,24 @@ class _OrdersScreenState extends State<OrdersScreen>
                       onTap: (_isChecked || _isClaiming || _claimDone)
                           ? null
                           : () async {
+                              // ✅ التحقق من السقف قبل الحجز
+                              final orderAmount = _toDouble(order['amount']);
+                              final remaining =
+                                  _toDouble(_dashboard?['remaining']);
+
+                              if (orderAmount > remaining) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "لا يمكنك استلام هذا الطلب لأنه أعلى من سقفك الحالي، قم بترقية الخطة",
+                                    ),
+                                    backgroundColor: Colors.red,
+                                    duration: Duration(seconds: 4),
+                                  ),
+                                );
+                                return; // ✅ لا تكمل الحجز
+                              }
+
                               print("🖱️ المستخدم ضغط على مربع التأكيد");
                               _sheetTimer?.cancel();
                               update(() => _isClaiming = true);
