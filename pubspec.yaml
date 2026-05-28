@@ -5,6 +5,7 @@ description: A new Flutter project.
 publish_to: 'none'
 
 version: 3.0.0+3
+
 environment:
   sdk: ">=3.0.0 <4.0.0"
 
@@ -25,9 +26,18 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.13.1
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#1a1a2e"
+  adaptive_icon_foreground: "assets/icon/icon.png"
 
 flutter:
   uses-material-design: true
   assets:
     - assets/sounds/notification.mp3
     - assets/images/trc20.png
+    - assets/icon/icon.png
